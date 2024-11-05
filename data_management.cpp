@@ -687,8 +687,8 @@ parameters get_approximate_gradient(heat const &heat, std::vector<std::vector<do
     point.tapping_slag_mass -= gradient.tapping_slag_mass*point.tapping_slag_mass;
     point2.tapping_slag_mass = point.tapping_slag_mass;
 
-    /*
-    point2.return_slag += delta * point.return_slag;
+    
+    /*point2.return_slag += delta * point.return_slag;
     gradient.return_slag = (get_slag_MSE(heat, compositions, point2) - point_MSE) / (delta * point.return_slag);
     point.return_slag -= gradient.return_slag*point.return_slag*delta;
     point_MSE = get_slag_MSE(heat, compositions, point);
@@ -893,7 +893,7 @@ int main()
     std::cout << "Done" << std::endl;
     results_file.close();
 }
-
+//Test branch
 //Tested minimazation algorithm 
 /*
 parameters get_approximate_gradient(heat heat, std::vector<std::vector<double>> compositions, parameters point, double delta)
