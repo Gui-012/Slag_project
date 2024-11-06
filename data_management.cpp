@@ -9,6 +9,7 @@
 #include <stdexcept> // std::runtime_error
 #include <sstream> // std::stringstream
 #include <thread>
+#include <time.h>
 
 //Id of substances in addition vector 
 #define     calcitic_lime_id    0
@@ -786,6 +787,16 @@ void minimize_heat(int id, std::vector<std::vector<double>> compositions)
     return;
 }
 
+double add_vector(std::vector<double> vec)
+{
+    double sum {};
+    for(auto x : vec)
+    {
+        sum += x;
+    }
+    return sum;
+}
+
 int main()
 {
     std::string file_name  {read_data_file_name()};
@@ -837,7 +848,8 @@ int main()
         return 1;
     }
     std::cout << "Running..." << std::endl;
-
+    clock_t t;
+    t = clock();
     
     std::vector<std::thread> threads {};
     parameters result {};
@@ -859,7 +871,10 @@ int main()
     }
 
     std::cout << "a: " << heat_pairs.at(0).first.tapping_slag_mass << std::endl;
-
+    std::vector<double> ovr_MSE {};
+    std::vector<double> ovr_abs_error {};
+    std::vector<double> ovr_rel_error {};
+    std::vector<double> ovr_stdev {};
     for(auto test_heat_pair : heat_pairs)
     {
         heat test_heat {test_heat_pair.second};
@@ -889,8 +904,20 @@ int main()
         results_file << "Final Relative Error: " << get_slag_relative_error(test_heat, compositions, results)*100 << std::endl;
         results_file << "Final Standard Deviation: " << find_std_dev_slag_error(get_calculated_slag(test_heat, compositions, results), test_heat.laddle.final_slag)*100 << std::endl << std::endl;
         results_file << "---------------------------------------------------------------------------------" << std::endl << std::endl;
+
+        ovr_MSE.push_back(get_slag_MSE(test_heat, compositions, results)*100);
+        ovr_abs_error.push_back(get_slag_absolute_error(test_heat, compositions, results)*100);
+        ovr_rel_error.push_back(get_slag_relative_error(test_heat, compositions, results)*100);
+        ovr_stdev.push_back(find_std_dev_slag_error(get_calculated_slag(test_heat, compositions, results), test_heat.laddle.final_slag)*100);
     }
     std::cout << "Done" << std::endl;
+    t = clock() - t;
+    std::cout << "Runtime: " << ((float)t)/CLOCKS_PER_SEC << std::endl;
+    std::cout << "Overall MSE: " << add_vector(ovr_MSE)/ovr_MSE.size() << std::endl;
+    std::cout << "Overall Absolute Error: " << add_vector(ovr_abs_error)/ovr_abs_error.size() << std::endl;
+    std::cout << "Overall Relative Error: " << add_vector(ovr_rel_error)/ovr_rel_error.size() << std::endl;
+    std::cout << "Overall Standard Deviation: " << add_vector(ovr_stdev)/ovr_stdev.size() << std::endl;
+
     results_file.close();
 }
 //Test branch
