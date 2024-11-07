@@ -2,14 +2,38 @@
 #include <string>
 #include <cmath>
 #include <iostream>
-#include <iomanip>
 #include <fstream>
 #include <vector>
-#include <utility> // std::pair
-#include <stdexcept> // std::runtime_error
-#include <sstream> // std::stringstream
+#include <sstream>
 #include <thread>
 #include <time.h>
+
+//Molar mass ratio between Si and SiO2
+#define Si_SiO2_ratio 60/28
+
+//Molar mass ratio between Ca and CaO
+#define Ca_CaO_ratio  56/40
+
+//Number of components in steel composition vectors
+#define STEEL_COMP_NUM   8
+
+//Number of components in slag composition vectors
+#define SLAG_COMP_NUM   7
+
+//Number of additions present in both tapping and laddle additions
+#define SHARED_ADDITIONS_ID 11
+
+//Upper index of tapping only additions in additions vector
+#define TAPPING_ADDITIONS 16
+
+//Upper index of laddle only additions in additions vector
+#define LADDLE_ADDITIONS_ID 21
+
+//Number of materials in the composition table
+#define COMPOSITION_MATERIALS 21
+
+//Number of elements in the composition table
+#define COMPOSITION_ELEMENTS 13
 
 //Id of substances in addition vector 
 #define     calcitic_lime_id    0
@@ -36,7 +60,6 @@
 #define     Extra3l_id           21
 
 // Ids of elements in composition table
-
 #define    C_id       0
 #define    Si_id      1
 #define    Mn_id      2
@@ -50,12 +73,6 @@
 #define    Al2O3_id   10
 #define    FeO_id     11
 #define    Fe2O3_id   12
-
-//Molar mass ratio between Si and SiO2
-#define Si_SiO2_ratio 60/28
-
-//Molar mass ratio between Ca and CaO
-#define Ca_CaO_ratio  56/40
 
 
 //Chemical composition of steel (in decimal percentages)
@@ -106,6 +123,16 @@ struct laddle_data
     std::string observations {};
 };
 
+//Paramers to be found
+struct parameters
+{
+    double tapping_slag_mass {};
+    double deoxidized_Mn {};
+    double deoxidized_Fe {};
+    double laddle_MgO {};
+    double return_slag {};
+};
+
 //Data from a heat
 struct heat
 {
@@ -115,16 +142,7 @@ struct heat
     std::string steel_type {};
     tapping_data tapping {};
     laddle_data laddle {};
-};
-
-//Paramers to be found
-struct parameters
-{
-    double tapping_slag_mass {};
-    double deoxidized_Mn {};
-    double deoxidized_Fe {};
-    double laddle_MgO {};
-    double return_slag {};
+    parameters results {};
 };
 
 //Promps user to enter a file name with a csv extension and returns the user input
@@ -154,7 +172,7 @@ std::string read_return_file_name()
     return file_name;
 }
 
-//check if data headings are the same as template and moves cursor to first data line
+//Checks if data headings are the same as template and moves cursor to first data line
 bool check_data_headings(std::ifstream &data_file)
 {
     std::string line {};
@@ -164,6 +182,7 @@ bool check_data_headings(std::ifstream &data_file)
     if(line.compare("VAZAMENTO FEA") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \"VAZAMENTO FEA\"" << std::endl;
         return false;
     }
     //skips for empty lines
@@ -172,12 +191,13 @@ bool check_data_headings(std::ifstream &data_file)
         std::getline(data_file, line);
     }
 
+    //Gets line can compares to template
     std::getline(data_file, line);
     line = line.substr(0, 126);
     if(line.compare(",,,,,,Adicões,,,,,,,,,,,,,,,,,Composição Química Aço,,,,,,,,Composição Química escória,,,,,,,,,Observações corridas") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
-        std::cout << "Should be: ,,,,,,Adicões,,,,,,,,,,,,,,,,,Composição Química Aço,,,,,,,,Composição Química escória,,,,,,,,,Observações corridas" << line << std::endl;
+        std::cout << "Should be: \",,,,,,Adicões,,,,,,,,,,,,,,,,,Composição Química Aço,,,,,,,,Composição Química escória,,,,,,,,,Observações corridas\"" << line << std::endl;
         return false;
     }
 
@@ -186,6 +206,7 @@ bool check_data_headings(std::ifstream &data_file)
     if(line.compare("Informações de corrida,,,,,,Fundentes/Formadores de escória,,,,,,Ligas/Desoxidantes,,,,,,Resíduos,,Outros") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \"Informações de corrida,,,,,,Fundentes/Formadores de escória,,,,,,Ligas/Desoxidantes,,,,,,Resíduos,,Outros\"" << std::endl;
         return false;
     }
 
@@ -194,6 +215,7 @@ bool check_data_headings(std::ifstream &data_file)
     if(line.compare("Contagem,Data,N° Corrida,Peso Aço,Tipo de aço,T°Vazamento,Cal Calcítica,Cal Dolomítica,Fluorita,Alumina,TS XXXX,CaC2,Carbono,FeSi,FeSiMn,SiC,Resíduo CaSi,Alumínio metálico,Areia,Escória de retorno,Aditivo de vazamento extra 1,Aditivo de vazamento extra 2,Aditivo de vazamento extra 3,C,Si,Mn,P,S,Nb,ppm O2 ,Mn/S,CaO,MgO,SiO2,Al2O3,FeO,MnO,CaF2") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \"Contagem,Data,N° Corrida,Peso Aço,Tipo de aço,T°Vazamento,Cal Calcítica,Cal Dolomítica,Fluorita,Alumina,TS XXXX,CaC2,Carbono,FeSi,FeSiMn,SiC,Resíduo CaSi,Alumínio metálico,Areia,Escória de retorno,Aditivo de vazamento extra 1,Aditivo de vazamento extra 2,Aditivo de vazamento extra 3,C,Si,Mn,P,S,Nb,ppm O2 ,Mn/S,CaO,MgO,SiO2,Al2O3,FeO,MnO,CaF2\"" << std::endl;
         return false;
     }
 
@@ -215,6 +237,7 @@ double string_to_double(std::string const &str)
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        return 1;
     }
     return number;
 }
@@ -234,15 +257,17 @@ int string_to_int(std::string const &str)
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        return 1;
     }
     return number;
 }
 
-//reads steel composition from file and returns in a steel_composition struct
+//Reads steel composition from file and returns in a steel_composition struct
 steel_composition read_steel_composition(std::ifstream &data_file)
 {
     std::string cell {};
     steel_composition steel {};
+    //C
     std::getline(data_file, cell, ',');
     steel.C = string_to_double(cell);
     //Si
@@ -269,11 +294,12 @@ steel_composition read_steel_composition(std::ifstream &data_file)
     return steel;
 }
 
-//reads slag composition from file and returns in a steel_composition struct
+//Reads slag composition from file and returns in a steel_composition struct
 slag_composition read_slag_composition(std::ifstream &data_file)
 {
     std::string cell {};
     slag_composition slag {};
+    //CaO
     std::getline(data_file, cell, ',');
     slag.CaO = string_to_double(cell)/100.0;
     //MgO
@@ -297,44 +323,47 @@ slag_composition read_slag_composition(std::ifstream &data_file)
     return slag;
 }
 
+//Reads data from the tapping section of the data table
 void read_tapping_data(std::vector<heat> &heats, std::ifstream &data_file)
 {
-    int heat_count {1};
+    int heat_count {0};
     std::string cell {};
     std::getline(data_file, cell, ',');
-    while(string_to_int(cell) == heat_count)
+
+    //Reads multiple heats (Checking the order )
+    while(string_to_int(cell) == heat_count + 1)
     {
         heats.push_back({});
         //date cell
         std::getline(data_file, cell, ',');
-        heats.at(heat_count - 1).date = cell;
+        heats.at(heat_count).date = cell;
         //heat number
         std::getline(data_file, cell, ',');
-        heats.at(heat_count - 1).heat_number = string_to_int(cell);
+        heats.at(heat_count).heat_number = string_to_int(cell);
         //Steel weight
         std::getline(data_file, cell, ',');
-        heats.at(heat_count - 1).steel_weight = string_to_double(cell);
+        heats.at(heat_count).steel_weight = string_to_double(cell);
         //Steel type
         std::getline(data_file, cell, ',');
-        heats.at(heat_count - 1).steel_type = cell;
+        heats.at(heat_count).steel_type = cell;
         //tapping temperature
         std::getline(data_file, cell, ',');
-        heats.at(heat_count - 1).tapping.tapping_temperature = string_to_double(cell);
+        heats.at(heat_count).tapping.tapping_temperature = string_to_double(cell);
         //tapping additions
-        for(int i {0}; i < 17; i++)
+        for(int i {0}; i <= TAPPING_ADDITIONS; i++)
         {
             std::getline(data_file, cell, ',');
-            heats.at(heat_count - 1).tapping.additions.push_back(string_to_double(cell));
+            heats.at(heat_count ).tapping.additions.push_back(string_to_double(cell));
         }
         //laddle only additions
-        for(int i {17}; i <= 21; i++)
+        for(int i {TAPPING_ADDITIONS + 1}; i <= LADDLE_ADDITIONS_ID; i++)
         {
-            heats.at(heat_count - 1).tapping.additions.push_back(0);
+            heats.at(heat_count).tapping.additions.push_back(0);
         }
         //tapping steel
-        heats.at(heat_count - 1).tapping.steel = read_steel_composition(data_file);
+        heats.at(heat_count).tapping.steel = read_steel_composition(data_file);
         //Tapping slag
-        heats.at(heat_count - 1).tapping.slag = read_slag_composition(data_file);
+        heats.at(heat_count).tapping.slag = read_slag_composition(data_file);
         //Ignore rest of line
         std::getline(data_file, cell);
         //Get first cell in next line
@@ -343,7 +372,7 @@ void read_tapping_data(std::vector<heat> &heats, std::ifstream &data_file)
     }
 }
 
-//check if headings on laddle data section are the same as template and moves cursor to first data line
+//Check if headings on laddle data section are the same as template and moves cursor to first data line
 bool check_laddle_headings(std::ifstream &data_file)
 {
     std::string line {};
@@ -357,6 +386,7 @@ bool check_laddle_headings(std::ifstream &data_file)
     if(line.compare("FORNO PANELA") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \"FORNO PANELA\"" << std::endl;
         return false;
     }
 
@@ -371,6 +401,7 @@ bool check_laddle_headings(std::ifstream &data_file)
     if(line.compare("Informações de corrida,,,,,,,Adicões,,,,,,,Ligas e desoxidades,,,,,,,Outros,,,Composição Química Aço (CFP),,,,,,,,Composição Química Aço (FFP),,,,,,,,Composição Química escória (CFP),,,,,,,,,Composição Química escória (FFP),,,,,,,,,Observações") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \"Informações de corrida,,,,,,,Adicões,,,,,,,Ligas e desoxidades,,,,,,,Outros,,,Composição Química Aço (CFP),,,,,,,,Composição Química Aço (FFP),,,,,,,,Composição Química escória (CFP),,,,,,,,,Composição Química escória (FFP),,,,,,,,,Observações\"" << std::endl;
         return false;
     }
 
@@ -379,6 +410,7 @@ bool check_laddle_headings(std::ifstream &data_file)
     if(line.compare(",,,,,,,Fundentes/Formadores de escória,,,,,,Ligas/Desoxidantes") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \",,,,,,,Fundentes/Formadores de escória,,,,,,Ligas/Desoxidantes\"" << std::endl;
         return false;
     }
     
@@ -387,18 +419,20 @@ bool check_laddle_headings(std::ifstream &data_file)
     if(line.compare("Contagem,Data,N° Corrida,Peso Aço,Tipo de aço,T°iFP,T°fFP,Cal Calcítica,Cal Dolomítica,Fluorita,Alumina,TS ***,CaC2,Carbono,FeSi,FeSiMn,SiC,CaSi,Alumínio metálico,FeS,Mn Eletrolítico,Aditivo de FP extra 1,Aditivo de FP extra 2,Aditivo de FP extra 3,C,Si,Mn,P,S,Nb,ppm O2 ,Mn/S,C,Si,Mn,P,S,Nb,ppm O2 ,Mn/S,CaO,MgO,SiO2,Al2O3,FeO,MnO,CaF2,Basicidade,Fechamento,CaO,MgO,SiO2,Al2O3,FeO,MnO,CaF2") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \"Contagem,Data,N° Corrida,Peso Aço,Tipo de aço,T°iFP,T°fFP,Cal Calcítica,Cal Dolomítica,Fluorita,Alumina,TS ***,CaC2,Carbono,FeSi,FeSiMn,SiC,CaSi,Alumínio metálico,FeS,Mn Eletrolítico,Aditivo de FP extra 1,Aditivo de FP extra 2,Aditivo de FP extra 3,C,Si,Mn,P,S,Nb,ppm O2 ,Mn/S,C,Si,Mn,P,S,Nb,ppm O2 ,Mn/S,CaO,MgO,SiO2,Al2O3,FeO,MnO,CaF2,Basicidade,Fechamento,CaO,MgO,SiO2,Al2O3,FeO,MnO,CaF2\"" << std::endl;
         return false;
     }
 
     return true;
 }
 
+//Reads data from the laddle data section of the data table
 void read_laddle_data(std::vector<heat> &heats, std::ifstream &data_file)
 {
-    int heat_count {1};
+    int heat_count {0};
     std::string cell {};
     std::getline(data_file, cell, ',');
-    while(string_to_int(cell) == heat_count)
+    while(string_to_int(cell) == heat_count + 1)
     {
         //date cell
         std::getline(data_file, cell, ',');
@@ -410,37 +444,38 @@ void read_laddle_data(std::vector<heat> &heats, std::ifstream &data_file)
         std::getline(data_file, cell, ',');
         //laddle initial temperature
         std::getline(data_file, cell, ',');
-        heats.at(heat_count - 1).laddle.initial_temperature = string_to_double(cell);
+        heats.at(heat_count).laddle.initial_temperature = string_to_double(cell);
         //laddle final temperature
         std::getline(data_file, cell, ',');
-        heats.at(heat_count - 1).laddle.final_temperature = string_to_double(cell);
-        //tapping additions
-        for(int i {0}; i <= 11; i++)
+        heats.at(heat_count).laddle.final_temperature = string_to_double(cell);
+        //Shared additions
+        for(int i {0}; i <= SHARED_ADDITIONS_ID; i++)
         {
             std::getline(data_file, cell, ',');
-            heats.at(heat_count - 1).laddle.additions.push_back(string_to_double(cell));
+            heats.at(heat_count).laddle.additions.push_back(string_to_double(cell));
         }
         //Skips tapping only additions
-        for(int i {12}; i <= 16; i++)
+        for(int i {SHARED_ADDITIONS_ID + 1}; i <= TAPPING_ADDITIONS; i++)
         {
-            heats.at(heat_count - 1).laddle.additions.push_back(0);
+            heats.at(heat_count).laddle.additions.push_back(0);
         }
-        for(int i {17}; i <= 21; i++)
+        //Reads laddle only additions
+        for(int i {TAPPING_ADDITIONS + 1}; i <= LADDLE_ADDITIONS_ID; i++)
         {
             std::getline(data_file, cell, ',');
-            heats.at(heat_count - 1).laddle.additions.push_back(string_to_double(cell));
+            heats.at(heat_count).laddle.additions.push_back(string_to_double(cell));
         }
         //laddle initial steel
-        heats.at(heat_count - 1).laddle.initial_steel = read_steel_composition(data_file);
+        heats.at(heat_count).laddle.initial_steel = read_steel_composition(data_file);
         //laddle final steel
-        heats.at(heat_count - 1).laddle.final_steel = read_steel_composition(data_file);
+        heats.at(heat_count).laddle.final_steel = read_steel_composition(data_file);
         //Laddle initial slag
-        heats.at(heat_count - 1).laddle.initial_slag = read_slag_composition(data_file);
+        heats.at(heat_count).laddle.initial_slag = read_slag_composition(data_file);
         //Ignore two lines
         std::getline(data_file, cell, ',');
         std::getline(data_file, cell, ',');
         //Laddle final slag
-        heats.at(heat_count - 1).laddle.final_slag = read_slag_composition(data_file);
+        heats.at(heat_count).laddle.final_slag = read_slag_composition(data_file);
         //Ignore rest of line
         std::getline(data_file, cell);
         //Get first cell in next line
@@ -449,6 +484,7 @@ void read_laddle_data(std::vector<heat> &heats, std::ifstream &data_file)
     }
 }
 
+//Check if headings on composition table are the same as template and moves cursor to first data line
 bool check_compositions_headings(std::ifstream &comp_file)
 {
     std::string line {};
@@ -458,6 +494,7 @@ bool check_compositions_headings(std::ifstream &comp_file)
     if(line.compare("Elementos de adição") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \"Elementos de adição\"" << std::endl;
         return false;
     }
     //skip rest of line
@@ -468,21 +505,25 @@ bool check_compositions_headings(std::ifstream &comp_file)
     if(line.compare("Nome,Tipo,C,Si,Mn,P,S,Ca,CaO,SiO2,MgO,CaF2,Al2O3,FeO,Fe2O3,CaC2,Rendimento Fe,Rendimento Si,Rendimento Mn,Rendimento Ca,Fechamento") != 0)
     {
         std::cout << "Wrong line:" << line << std::endl;
+        std::cout << "Should be: \"Nome,Tipo,C,Si,Mn,P,S,Ca,CaO,SiO2,MgO,CaF2,Al2O3,FeO,Fe2O3,CaC2,Rendimento Fe,Rendimento Si,Rendimento Mn,Rendimento Ca,Fechamento\"" << std::endl;
         return false;
     }
     return true;
 }
 
+//Reads data from the composition table
 std::vector<std::vector<double>> read_composition_data(std::ifstream &comp_file)
 {
     std::vector<std::vector<double>> compositions {};
     std::string cell {};
-    for(int material_id {0}; material_id <= 21; material_id++)
+    //For each material in the composition table
+    for(int material_id {0}; material_id <= COMPOSITION_MATERIALS; material_id++)
     {
         std::vector<double> comp {};
         std::getline(comp_file, cell, ',');
         std::getline(comp_file, cell, ',');
-        for(int element_id {0}; element_id <= 13; element_id++)
+        //Reads all the elements composition percentage in the material 
+        for(int element_id {0}; element_id <= COMPOSITION_ELEMENTS; element_id++)
         {
             std::getline(comp_file, cell, ',');
             comp.push_back(string_to_double(cell)/100.0);
@@ -541,6 +582,7 @@ double get_added_substance(int substance_id, heat heat, double return_slag, std:
     return added;
 }
 
+//Calculates final slag mass in a heat
 double get_final_slag_mass(parameters parameters, slag_composition tapping_slag, double added_mass)
 {
     double slag_mass {parameters.tapping_slag_mass};  //Start slag mass calculation with slag mass from tapping
@@ -564,6 +606,7 @@ slag_composition get_calculated_slag(heat const &heat, std::vector<std::vector<d
     double total_added_mass {added_SiO2 + added_CaO + added_MgO + added_CaF2 + added_Al2O3};
     double final_slag_mass {get_final_slag_mass(parameters, heat.tapping.slag, total_added_mass)};
     slag_composition final_slag {};
+
     //Calculating percentage composition of final slag, including the parameters as needed
     final_slag.CaO = (parameters.tapping_slag_mass*heat.tapping.slag.CaO + added_CaO) / final_slag_mass; //Adds CaO from tapping and added Cao
     final_slag.MgO = (parameters.tapping_slag_mass*heat.tapping.slag.MgO + added_MgO + parameters.laddle_MgO) / final_slag_mass; //Adds MgO from tapping, added MgO and MgO from laddle lining
@@ -580,6 +623,7 @@ slag_composition get_calculated_slag(heat const &heat, std::vector<std::vector<d
 double find_slag_MSE(slag_composition const &calculated_slag, slag_composition const &measured_slag)
 {
     std::vector<double> errors {};
+    //Calculates error for each slag element
     errors.push_back(calculated_slag.CaO - measured_slag.CaO);
     errors.push_back(calculated_slag.MgO - measured_slag.MgO);
     errors.push_back(calculated_slag.SiO2 - measured_slag.SiO2);
@@ -588,18 +632,18 @@ double find_slag_MSE(slag_composition const &calculated_slag, slag_composition c
     errors.push_back(calculated_slag.MnO - measured_slag.MnO);
     errors.push_back(calculated_slag.CaF2 - measured_slag.CaF2);
 
-    double average_error {0};
-
+    double MSE {0};
+    //Sums squares of errors
     for(double x : errors)
     {
-        average_error += x*x;
+        MSE += x*x;
     }
     
-    average_error /= errors.size();
-    
-    return average_error;
+    //Returns average of squared errors
+    return MSE /= errors.size();
 }
 
+//Returns mean squared error of the slag compositioni using heat, composition, and parameters
 double get_slag_MSE(heat const &heat, std::vector<std::vector<double>> const &compositions, parameters const &parameters)
 {
     return  find_slag_MSE(get_calculated_slag(heat, compositions, parameters), heat.laddle.final_slag);
@@ -617,9 +661,10 @@ double find_slag_relative_error(slag_composition const &calculated_slag, slag_co
     error += abs(calculated_slag.MnO - measured_slag.MnO)/measured_slag.MnO;
     error += (measured_slag.CaF2 > 0 ? abs(calculated_slag.CaF2 - measured_slag.CaF2)/measured_slag.CaF2 : 0);
     
-    return error/7;
+    return error / SLAG_COMP_NUM;
 }
 
+//Returns relative error of the slag compositioni using heat, composition, and parameters
 double get_slag_relative_error(heat const &heat, std::vector<std::vector<double>> const &compositions, parameters const &parameters)
 {
     return  find_slag_relative_error(get_calculated_slag(heat, compositions, parameters), heat.laddle.final_slag);
@@ -637,9 +682,10 @@ double find_slag_absolute_error(slag_composition const &calculated_slag, slag_co
     error += abs(calculated_slag.MnO - measured_slag.MnO);
     error += abs(calculated_slag.CaF2 - measured_slag.CaF2);
     
-    return error/7;
+    return error / SLAG_COMP_NUM;
 }
 
+//Returns absolute error of the slag compositioni using heat, composition, and parameters
 double get_slag_absolute_error(heat const &heat, std::vector<std::vector<double>> const &compositions, parameters const &parameters)
 {
     return  find_slag_absolute_error(get_calculated_slag(heat, compositions, parameters), heat.laddle.final_slag);
@@ -677,119 +723,124 @@ double find_std_dev_slag_error(slag_composition const &calculated_slag, slag_com
     return std_dev;
 }
 
-parameters get_approximate_gradient(heat const &heat, std::vector<std::vector<double>> const &compositions, parameters point, double const &delta)
+//Calculates the next point (Parameters) in minimization process
+parameters get_next_point(heat const &heat, std::vector<std::vector<double>> const &compositions, parameters point, double const &delta)
 {
-    parameters gradient {0};
+    double derivative {0};
     parameters point2 {point};
     double point_MSE {get_slag_MSE(heat, compositions, point)};
     
+    //Increase tapping slag mass by small step
     point2.tapping_slag_mass += delta * point.tapping_slag_mass;
-    gradient.tapping_slag_mass = (get_slag_MSE(heat, compositions, point2) - point_MSE) / (delta * point.tapping_slag_mass);
-    point.tapping_slag_mass -= gradient.tapping_slag_mass*point.tapping_slag_mass;
+    //Calculated derivative
+    derivative = (get_slag_MSE(heat, compositions, point2) - point_MSE) / (delta * point.tapping_slag_mass);
+    //Moves point in the direction of the derivative
+    point.tapping_slag_mass -= derivative*point.tapping_slag_mass;
+    //Resets point 2
     point2.tapping_slag_mass = point.tapping_slag_mass;
 
-    
-    /*point2.return_slag += delta * point.return_slag;
-    gradient.return_slag = (get_slag_MSE(heat, compositions, point2) - point_MSE) / (delta * point.return_slag);
-    point.return_slag -= gradient.return_slag*point.return_slag*delta;
-    point_MSE = get_slag_MSE(heat, compositions, point);
-    point2.return_slag = point.return_slag;*/
-
     point2.laddle_MgO += delta * point.laddle_MgO;
-    gradient.laddle_MgO = (abs(get_calculated_slag(heat, compositions, point2).MgO - heat.laddle.final_slag.MgO) - abs(get_calculated_slag(heat, compositions, point).MgO - heat.laddle.final_slag.MgO)) / (delta * point.laddle_MgO);
-    point.laddle_MgO -= gradient.laddle_MgO*point.laddle_MgO;
+    derivative = (abs(get_calculated_slag(heat, compositions, point2).MgO - heat.laddle.final_slag.MgO) - abs(get_calculated_slag(heat, compositions, point).MgO - heat.laddle.final_slag.MgO)) / (delta * point.laddle_MgO);
+    point.laddle_MgO -= derivative*point.laddle_MgO;
     point2.laddle_MgO = point.laddle_MgO;
 
     point2.deoxidized_Mn += delta * point.deoxidized_Mn;
-    gradient.deoxidized_Mn = (abs(get_calculated_slag(heat, compositions, point2).MnO - heat.laddle.final_slag.MnO) - abs(get_calculated_slag(heat, compositions, point).MnO - heat.laddle.final_slag.MnO)) / (delta * point.deoxidized_Mn);
-    point.deoxidized_Mn -= gradient.deoxidized_Mn*point.deoxidized_Mn*delta;
+    //Use slag MnO error for optimization
+    derivative = (abs(get_calculated_slag(heat, compositions, point2).MnO - heat.laddle.final_slag.MnO) - abs(get_calculated_slag(heat, compositions, point).MnO - heat.laddle.final_slag.MnO)) / (delta * point.deoxidized_Mn);
+    point.deoxidized_Mn -= derivative*point.deoxidized_Mn*delta;
+    //Checks that deoxidization is at maximum 100%
     point.deoxidized_Mn = point.deoxidized_Mn <= 1 ? point.deoxidized_Mn : 1;
     point2.deoxidized_Mn = point.deoxidized_Mn;
 
     point2.deoxidized_Fe += delta * point.deoxidized_Fe;
-    gradient.deoxidized_Fe = (abs(get_calculated_slag(heat, compositions, point2).FeO - heat.laddle.final_slag.FeO) - abs(get_calculated_slag(heat, compositions, point).FeO - heat.laddle.final_slag.FeO)) / (delta * point.deoxidized_Fe);
-    point.deoxidized_Fe -= gradient.deoxidized_Fe*point.deoxidized_Fe*delta;
+    //Use slag FeO error for optimization
+    derivative = (abs(get_calculated_slag(heat, compositions, point2).FeO - heat.laddle.final_slag.FeO) - abs(get_calculated_slag(heat, compositions, point).FeO - heat.laddle.final_slag.FeO)) / (delta * point.deoxidized_Fe);
+    point.deoxidized_Fe -= derivative*point.deoxidized_Fe*delta;
+    //Checks that deoxidization is at maximum 100%
     point.deoxidized_Fe = point.deoxidized_Fe <= 1 ? point.deoxidized_Fe : 1;
     point2.deoxidized_Fe = point.deoxidized_Fe;
 
     return point2;
 }
 
-parameters minimize(heat const &heat, std::vector<std::vector<double>> const &compositions, parameters start_point, double step_size, double finish_size, int max_iterations, bool b)
+//Minimizes the MSE of the slag composition using modified gradient algorithm and stores result in heat struct
+parameters minimize(heat const &heat, std::vector<std::vector<double>> const &compositions, parameters start_point, double step_size, int max_iterations)
 {
     parameters point {start_point};
     int n {0};
     double original_step_size {step_size};
-    while(finish_size < step_size && n < max_iterations)
+    //Ensures maximum iterations of algorithm
+    while(n < max_iterations)
     {
         n += 1;
         step_size = original_step_size;
+
+        //Sets initial error in starting point
         double start {get_slag_MSE(heat, compositions, point)};
-        parameters point2 {get_approximate_gradient(heat, compositions, point, step_size)};
+        
+        //Finds next point
+        parameters point2 {get_next_point(heat, compositions, point, step_size)};
         double end {get_slag_MSE(heat, compositions, point2)};
         int i {0};
         bool done {false};
+
+        //If the starting point has higher error
         while(start < end)
         {
             if(i > 150)
             {
-                if(b)
-                {
-                    std::cout << "n: " << n << std::endl << "i: " << i << std::endl;
-                }
                 return point;
             }
+
+            //Decreases step size to find lower error
             step_size /= 2;
-            point2 = get_approximate_gradient(heat, compositions, point2, step_size);
+            point2 = get_next_point(heat, compositions, point2, step_size);
             end = get_slag_MSE(heat, compositions, point2);
             i++;
         }
         point = point2;
     }
-    if(b)
-    {
-        std::cout << "n: " << n << std::endl;
-    }
     return point;
 }
 
-std::vector<std::pair<parameters, heat>> heat_pairs{};
+std::vector<heat> heats{};
 
-void minimize_heat(int id, std::vector<std::vector<double>> compositions)
+//Minimizes the slag error in a heat
+void solve_heat(int id, std::vector<std::vector<double>> compositions)
 {
-    heat_pairs.at(id).first = {heat_pairs.at(id).second.steel_weight*5, 0.50, 0.50, 10, heat_pairs.at(id).second.steel_weight*2.5};
-    double best_error {get_slag_MSE(heat_pairs.at(id).second, compositions, minimize(heat_pairs.at(id).second, compositions, heat_pairs.at(id).first, 0.01, 0.000000001, 300, false))};
+    heats.at(id).results = {heats.at(id).steel_weight*5, 0.50, 0.50, 10, heats.at(id).steel_weight*2.5};
+    double best_error {get_slag_MSE(heats.at(id), compositions, minimize(heats.at(id), compositions, heats.at(id).results, 0.01, 500))};
     for(float i {1}; i <= 25; i += 0.5)
     {   
-        parameters temp {minimize(heat_pairs.at(id).second, compositions, {heat_pairs.at(id).second.steel_weight*(5 + i), 0.50, 0.50, 10, 200}, 0.01, 0.0000000000000001, 300, false)};
-        double error {get_slag_MSE(heat_pairs.at(id).second, compositions, temp)};
+        parameters temp {minimize(heats.at(id), compositions, {heats.at(id).steel_weight*(5 + i), 0.50, 0.50, 10, 200}, 0.01, 500)};
+        double error {get_slag_MSE(heats.at(id), compositions, temp)};
         if(error < best_error)
         {
             best_error = error;
-            heat_pairs.at(id).first = temp;
+            heats.at(id).results = temp;
         }
     }
-    for(float i {20.0}; i <= heat_pairs.at(id).second.steel_weight*5; i += 20.0)
+    for(float i {20.0}; i <= heats.at(id).steel_weight*5; i += 20.0)
     {   
-        parameters temp {heat_pairs.at(id).first};
+        parameters temp {heats.at(id).results};
         temp.return_slag = i;
-        temp = minimize(heat_pairs.at(id).second, compositions, temp, 0.01, 0.0000000000000001, 300, false);
-        double error {get_slag_MSE(heat_pairs.at(id).second, compositions, temp)};
+        temp = minimize(heats.at(id), compositions, temp, 0.01, 500);
+        double error {get_slag_MSE(heats.at(id), compositions, temp)};
         if(error < best_error)
         {
             best_error = error;
-            heat_pairs.at(id).first = temp;
+            heats.at(id).results = temp;
         }
     }
 
-    heat_pairs.at(id).first = minimize(heat_pairs.at(id).second, compositions, heat_pairs.at(id).first, 0.01, 0.0000000001, 10000, true);
-    std::cout << heat_pairs.at(id).first.tapping_slag_mass << std::endl;
+    heats.at(id).results = minimize(heats.at(id), compositions, heats.at(id).results, 0.01, 20000);
     return;
 }
 
+//Sums all elements in a vector
 double add_vector(std::vector<double> vec)
 {
-    double sum {};
+    double sum {0};
     for(auto x : vec)
     {
         sum += x;
@@ -799,8 +850,8 @@ double add_vector(std::vector<double> vec)
 
 int main()
 {
+    //Opens data table file
     std::string file_name  {read_data_file_name()};
-    //std::string file_name  {"dados.csv"};
     std::ifstream data_file (file_name);
     if(!data_file.is_open())
     {
@@ -808,9 +859,8 @@ int main()
         return 1;
     }
 
-    //file_name = "comp.csv";
+    //Opens Compositions table file
     file_name = read_comp_file_name();
-
     std::ifstream compositions_file (file_name);
     if(!compositions_file.is_open())
     {
@@ -818,12 +868,12 @@ int main()
         return 1;
     }
 
+    //Reads data from data file
     if(!check_data_headings(data_file))
     {
         std::cout << "Invalid Data Table Format" << std::endl;
         return 1;
     }
-    std::vector<heat> heats {};
     read_tapping_data(heats, data_file);
     if(!check_laddle_headings(data_file))
     {
@@ -831,6 +881,8 @@ int main()
         return 1;
     }
     read_laddle_data(heats, data_file);
+
+    //Reads material compositions from compositions file
     if(!check_compositions_headings(compositions_file))
     {
         std::cout << "Invalid Composition Table Format" << std::endl;
@@ -840,6 +892,8 @@ int main()
     std::ofstream results_file;
     data_file.close();
     compositions_file.close();
+
+    //Opens file to stores results
     file_name = read_return_file_name();
     results_file.open(file_name);
     if(!results_file.is_open())
@@ -848,48 +902,41 @@ int main()
         return 1;
     }
     std::cout << "Running..." << std::endl;
+
+    //Initiates clock to measure program runtime
     clock_t t;
     t = clock();
     
+    //Sets each heat solving as its own thread for multithreading optimization
     std::vector<std::thread> threads {};
-    parameters result {};
-    for(auto test_heat : heats)
+    for(int i {0}; i < heats.size(); i++)
     {
-        heat_pairs.push_back(std::make_pair(result, test_heat));
-        //threads.push_back(std::thread(foo, heat_pairs.size() - 1, compositions));
-        //threads.push_back(std::thread(minimize_heat, heat_pairs.size() - 1, compositions));
+        threads.push_back(std::thread(solve_heat, i, compositions));
     }
 
-    for(int i {0}; i < heat_pairs.size(); i++)
-    {
-        threads.push_back(std::thread(minimize_heat, i, compositions));
-    }
-
+    //Waits for all threads to finish
     for(auto &th : threads)
     {
         th.join();
     }
 
-    std::cout << "a: " << heat_pairs.at(0).first.tapping_slag_mass << std::endl;
+    //Vectores use to store and calculate errors from all heats
     std::vector<double> ovr_MSE {};
     std::vector<double> ovr_abs_error {};
     std::vector<double> ovr_rel_error {};
     std::vector<double> ovr_stdev {};
-    for(auto test_heat_pair : heat_pairs)
+    for(auto test_heat : heats)
     {
-        heat test_heat {test_heat_pair.second};
-        parameters results {test_heat_pair.first};
-        
         //5 a 15% da escoria final fica de retorno
-        std::cout << "Heat Number: " << test_heat.heat_number << std::endl;
+        //std::cout << "Heat Number: " << test_heat.heat_number << std::endl;
         results_file << "Heat Number: " << test_heat.heat_number << std::endl;
-        results_file << "Result Tapping Mass: " << results.tapping_slag_mass << std::endl;
-        results_file << "Result Deoxidized Mn: " << results.deoxidized_Mn << std::endl;
-        results_file << "Result Deoxidized Fe: " << results.deoxidized_Fe << std::endl;
-        results_file << "Result Laddle MgO: " << results.laddle_MgO << std::endl;
-        results_file << "Result Return Slag: " << results.return_slag << std::endl << std::endl;;
+        results_file << "Result Tapping Mass: " << test_heat.results.tapping_slag_mass << std::endl;
+        results_file << "Result Deoxidized Mn: " << test_heat.results.deoxidized_Mn << std::endl;
+        results_file << "Result Deoxidized Fe: " << test_heat.results.deoxidized_Fe << std::endl;
+        results_file << "Result Laddle MgO: " << test_heat.results.laddle_MgO << std::endl;
+        results_file << "Result Return Slag: " << test_heat.results.return_slag << std::endl << std::endl;;
 
-        slag_composition final_calculated_slag {get_calculated_slag(test_heat, compositions, results)};
+        slag_composition final_calculated_slag {get_calculated_slag(test_heat, compositions, test_heat.results)};
 
         results_file << "Calculated/Measured CaO: " << final_calculated_slag.CaO*100 << " / " << test_heat.laddle.final_slag.CaO*100 << std::endl;
         results_file << "Calculated/Measured MgO: " << final_calculated_slag.MgO*100 << " / " << test_heat.laddle.final_slag.MgO*100 << std::endl;
@@ -899,242 +946,23 @@ int main()
         results_file << "Calculated/Measured MnO: " << final_calculated_slag.MnO*100 << " / " << test_heat.laddle.final_slag.MnO*100 << std::endl;
         results_file << "Calculated/Measured CaF2: " << final_calculated_slag.CaF2*100 << " / " << test_heat.laddle.final_slag.CaF2*100 << std::endl << std::endl;
 
-        results_file << "Final MSE: " << get_slag_MSE(test_heat, compositions, results)*100 << std::endl;
-        results_file << "Final Absolute Error: " << get_slag_absolute_error(test_heat, compositions, results)*100 << std::endl;
-        results_file << "Final Relative Error: " << get_slag_relative_error(test_heat, compositions, results)*100 << std::endl;
-        results_file << "Final Standard Deviation: " << find_std_dev_slag_error(get_calculated_slag(test_heat, compositions, results), test_heat.laddle.final_slag)*100 << std::endl << std::endl;
+        results_file << "Final MSE: " << get_slag_MSE(test_heat, compositions, test_heat.results)*100 << std::endl;
+        results_file << "Final Absolute Error: " << get_slag_absolute_error(test_heat, compositions, test_heat.results)*100 << std::endl;
+        results_file << "Final Relative Error: " << get_slag_relative_error(test_heat, compositions, test_heat.results)*100 << std::endl;
+        results_file << "Final Standard Deviation: " << find_std_dev_slag_error(get_calculated_slag(test_heat, compositions, test_heat.results), test_heat.laddle.final_slag)*100 << std::endl << std::endl;
         results_file << "---------------------------------------------------------------------------------" << std::endl << std::endl;
 
-        ovr_MSE.push_back(get_slag_MSE(test_heat, compositions, results)*100);
-        ovr_abs_error.push_back(get_slag_absolute_error(test_heat, compositions, results)*100);
-        ovr_rel_error.push_back(get_slag_relative_error(test_heat, compositions, results)*100);
-        ovr_stdev.push_back(find_std_dev_slag_error(get_calculated_slag(test_heat, compositions, results), test_heat.laddle.final_slag)*100);
+        ovr_MSE.push_back(get_slag_MSE(test_heat, compositions, test_heat.results)*100);
+        ovr_abs_error.push_back(get_slag_absolute_error(test_heat, compositions, test_heat.results)*100);
+        ovr_rel_error.push_back(get_slag_relative_error(test_heat, compositions, test_heat.results)*100);
+        ovr_stdev.push_back(find_std_dev_slag_error(get_calculated_slag(test_heat, compositions, test_heat.results), test_heat.laddle.final_slag)*100);
     }
     std::cout << "Done" << std::endl;
     t = clock() - t;
-    std::cout << "Runtime: " << ((float)t)/CLOCKS_PER_SEC << std::endl;
-    std::cout << "Overall MSE: " << add_vector(ovr_MSE)/ovr_MSE.size() << std::endl;
-    std::cout << "Overall Absolute Error: " << add_vector(ovr_abs_error)/ovr_abs_error.size() << std::endl;
-    std::cout << "Overall Relative Error: " << add_vector(ovr_rel_error)/ovr_rel_error.size() << std::endl;
-    std::cout << "Overall Standard Deviation: " << add_vector(ovr_stdev)/ovr_stdev.size() << std::endl;
-
+    results_file << "Runtime: " << ((float)t)/CLOCKS_PER_SEC << std::endl;
+    results_file << "Overall MSE: " << add_vector(ovr_MSE)/ovr_MSE.size() << std::endl;
+    results_file << "Overall Absolute Error: " << add_vector(ovr_abs_error)/ovr_abs_error.size() << std::endl;
+    results_file << "Overall Relative Error: " << add_vector(ovr_rel_error)/ovr_rel_error.size() << std::endl;
+    results_file << "Overall Standard Deviation: " << add_vector(ovr_stdev)/ovr_stdev.size() << std::endl;
     results_file.close();
 }
-//Test branch
-//Tested minimazation algorithm 
-/*
-parameters get_approximate_gradient(heat heat, std::vector<std::vector<double>> compositions, parameters point, double delta)
-{
-    parameters gradient {0};
-    parameters point2 {point};
-    double point_MSE {get_slag_MSE(heat, compositions, point)};
-    point2.tapping_slag_mass += delta * point.tapping_slag_mass;
-    gradient.tapping_slag_mass = (get_slag_MSE(heat, compositions, point2) - point_MSE) / (delta * point.tapping_slag_mass);
-    point.tapping_slag_mass -= gradient.tapping_slag_mass*point.tapping_slag_mass;
-    point2.tapping_slag_mass = point.tapping_slag_mass;
-    point2.return_slag += delta * point.return_slag;
-    gradient.return_slag = (get_slag_MSE(heat, compositions, point2) - point_MSE) / delta;
-    point.return_slag -= gradient.return_slag*point.return_slag*delta;
-    get_slag_MSE(heat, compositions, point);
-    point2.return_slag = point.return_slag;
-    point2.laddle_MgO += delta * point.laddle_MgO;
-    gradient.laddle_MgO = (abs(get_calculated_slag(heat, compositions, point2).MgO - heat.laddle.final_slag.MgO) - abs(get_calculated_slag(heat, compositions, point).MgO - heat.laddle.final_slag.MgO)) / (delta * point.laddle_MgO);
-    point.laddle_MgO -= gradient.laddle_MgO*point.laddle_MgO;
-    point2.laddle_MgO = point.laddle_MgO;
-    point2.deoxidized_Mn += delta * point.deoxidized_Mn;
-    gradient.deoxidized_Mn = (abs(get_calculated_slag(heat, compositions, point2).MnO - heat.laddle.final_slag.MnO) - abs(get_calculated_slag(heat, compositions, point).MnO - heat.laddle.final_slag.MnO)) / (delta * point.deoxidized_Mn);
-    point.deoxidized_Mn -= gradient.deoxidized_Mn*point.deoxidized_Mn;
-    point2.deoxidized_Mn = point.deoxidized_Mn;
-    point2.deoxidized_Fe += delta * point.deoxidized_Fe;
-    gradient.deoxidized_Fe = (abs(get_calculated_slag(heat, compositions, point2).FeO - heat.laddle.final_slag.FeO) - abs(get_calculated_slag(heat, compositions, point).FeO - heat.laddle.final_slag.FeO)) / (delta * point.deoxidized_Fe);
-    point.deoxidized_Fe -= gradient.deoxidized_Fe*point.deoxidized_Fe;
-    point2.deoxidized_Fe = point.deoxidized_Fe;
-
-    return point2;
-}
-
-parameters minimize(heat heat, std::vector<std::vector<double>> compositions, parameters start_point, double step_size, double finish_size, int max_iterations)
-{
-    parameters point {start_point};
-    int n {0};
-    double original_step_size {step_size};
-    while(finish_size < step_size && n < max_iterations)
-    {
-        n += 1;
-        step_size = original_step_size;
-        double start {get_slag_MSE(heat, compositions, point)};
-        parameters point2 {get_approximate_gradient(heat, compositions, point, step_size)};
-        double end {get_slag_MSE(heat, compositions, point2)};
-        int i {0};
-        bool done {false};
-        while(start < end)
-        {
-            if(i > 100)
-            {
-                std::cout << "i:" << i << std::endl;
-                std::cout << "n:" << n << std::endl;
-                return point;
-            }
-            step_size /= 2;
-            point2 = get_approximate_gradient(heat, compositions, point2, step_size);
-            end = get_slag_MSE(heat, compositions, point2);
-            i++;
-        }
-        point = point2;
-    }
-    std::cout << "n:" << n << std::endl;
-    return point;
-}
-*/
-
-//Line search algorithm
-/*
-parameters get_approximate_gradient(heat heat, std::vector<std::vector<double>> compositions, parameters point, double delta)
-{
-    parameters gradient {0};
-    parameters point2 {point};
-    double point_MSE {get_slag_MSE(heat, compositions, point)};
-    
-    point2.tapping_slag_mass += delta;
-    double point2_MSE {get_slag_MSE(heat, compositions, point2)};
-    gradient.tapping_slag_mass = -(point2_MSE - point_MSE) / delta;
-    point2.tapping_slag_mass = point.tapping_slag_mass;
-
-    point2.laddle_MgO += delta;
-    point2_MSE = get_slag_MSE(heat, compositions, point2);
-    gradient.laddle_MgO = -pow(abs(get_calculated_slag(heat, compositions, point2).MgO - heat.laddle.final_slag.MgO) - abs(get_calculated_slag(heat, compositions, point).MgO - heat.laddle.final_slag.MgO), 2) / delta;
-    point2.laddle_MgO = point.laddle_MgO;
-
-    point2.deoxidized_Fe += delta;
-    point2_MSE = get_slag_MSE(heat, compositions, point2);
-    gradient.deoxidized_Fe = -pow(abs(get_calculated_slag(heat, compositions, point2).FeO - heat.laddle.final_slag.FeO) - abs(get_calculated_slag(heat, compositions, point).FeO - heat.laddle.final_slag.FeO), 2) / delta;
-    point2.deoxidized_Fe = point.deoxidized_Fe;
-
-    point2.deoxidized_Mn += delta;
-    point2_MSE = get_slag_MSE(heat, compositions, point2);
-    gradient.deoxidized_Mn = -pow(abs(get_calculated_slag(heat, compositions, point2).MnO - heat.laddle.final_slag.MnO) - abs(get_calculated_slag(heat, compositions, point).MnO - heat.laddle.final_slag.MnO), 2) / delta;
-    point2.deoxidized_Mn = point.deoxidized_Mn;
-
-    return gradient;
-}
-
-double get_gradient_magnitude(parameters gradient)
-{
-    return std::sqrt(gradient.tapping_slag_mass*gradient.tapping_slag_mass + gradient.laddle_MgO*gradient.laddle_MgO + gradient.deoxidized_Fe*gradient.deoxidized_Fe + gradient.deoxidized_Mn*gradient.deoxidized_Mn);
-}
-
-parameters minimize(heat heat, std::vector<std::vector<double>> compositions, parameters start_point, double delta, double finish_size, int max_iterations)
-{
-    parameters point {start_point};
-    parameters point2 {};
-    int n {0};
-    double original_delta {delta};
-    while(finish_size < delta && n < max_iterations)
-    {
-        n += 1;
-        //std::cout << "n:" << n << std::endl;
-        parameters gradient (get_approximate_gradient(heat, compositions, point, delta));\
-        double gradient_magnitude {get_gradient_magnitude(gradient)};
-
-        parameters vector_p {};
-        vector_p.tapping_slag_mass = gradient.tapping_slag_mass/gradient_magnitude;
-        vector_p.laddle_MgO = gradient.laddle_MgO/gradient_magnitude;
-        vector_p.deoxidized_Fe = gradient.deoxidized_Fe/gradient_magnitude;
-        vector_p.deoxidized_Mn = gradient.deoxidized_Mn/gradient_magnitude;
-
-        double point_error {get_slag_MSE(heat, compositions, point)};
-
-        double alpha {2};
-
-        double point2_error {};
-        double constant {0};
-
-        do
-        {
-            alpha *= 0.5;
-            point2.tapping_slag_mass = point.tapping_slag_mass + alpha*vector_p.tapping_slag_mass;
-            point2.laddle_MgO = point.laddle_MgO + alpha*vector_p.laddle_MgO;
-            point2.deoxidized_Fe = point.deoxidized_Fe + alpha*vector_p.deoxidized_Fe;
-            point2.deoxidized_Mn = point.deoxidized_Mn + alpha*vector_p.deoxidized_Mn;
-            point2.return_slag = point.return_slag;
-
-            point2_error = get_slag_MSE(heat, compositions, point2);
-
-            constant = 0;
-
-            constant += vector_p.tapping_slag_mass*gradient.tapping_slag_mass;
-            constant += vector_p.laddle_MgO*gradient.laddle_MgO;
-            constant += vector_p.deoxidized_Fe*gradient.deoxidized_Fe;
-            constant += vector_p.deoxidized_Mn*gradient.deoxidized_Mn;
-            constant *= alpha*0.0001;
-            constant += point_error;
-            //std::cout << "point2_error:" << vector_p.laddle_MgO << std::endl;
-            //std::cout << "constant:" << constant << std::endl;
-        } while (point2_error > constant);
-
-        point = point2;
-    }
-    return point2;
-}
-*/
-
-/*
-for(auto test_heat : heats)
-    {
-        parameters results {test_heat.steel_weight*5, 0.50, 0.50, 10, test_heat.steel_weight*2.5};
-        double best_error {get_slag_MSE(test_heat, compositions, minimize(test_heat, compositions, results, 0.01, 0.000000001, 300, false))};
-        for(float i {1}; i <= 25; i += 0.5)
-        {   
-            parameters temp {minimize(test_heat, compositions, {test_heat.steel_weight*(5 + i), 0.50, 0.50, 10, 200}, 0.01, 0.0000000000000001, 300, false)};
-            double error {get_slag_MSE(test_heat, compositions, temp)};
-            if(error < best_error)
-            {
-                best_error = error;
-                results = temp;
-            }
-        }
-
-        for(float i {20.0}; i <= test_heat.steel_weight*5; i += 20.0)
-        {   
-            parameters temp {results};
-            temp.return_slag = i;
-            temp = minimize(test_heat, compositions, temp, 0.01, 0.0000000000000001, 300, false);
-            double error {get_slag_MSE(test_heat, compositions, temp)};
-            if(error < best_error)
-            {
-                best_error = error;
-                results = temp;
-            }
-        }
-
-        results = minimize(test_heat, compositions, results, 0.01, 0.0000000001, 10000, true);
-        
-        //5 a 15% da escoria final fica de retorno
-        std::cout << "Heat Number: " << test_heat.heat_number << std::endl;
-        results_file << "Heat Number: " << test_heat.heat_number << std::endl;
-        results_file << "Result Tapping Mass: " << results.tapping_slag_mass << std::endl;
-        results_file << "Result Deoxidized Mn: " << results.deoxidized_Mn << std::endl;
-        results_file << "Result Deoxidized Fe: " << results.deoxidized_Fe << std::endl;
-        results_file << "Result Laddle MgO: " << results.laddle_MgO << std::endl;
-        results_file << "Result Return Slag: " << results.return_slag << std::endl << std::endl;;
-
-        slag_composition final_calculated_slag {get_calculated_slag(test_heat, compositions, results)};
-
-        results_file << "Calculated/Measured CaO: " << final_calculated_slag.CaO*100 << " / " << test_heat.laddle.final_slag.CaO*100 << std::endl;
-        results_file << "Calculated/Measured MgO: " << final_calculated_slag.MgO*100 << " / " << test_heat.laddle.final_slag.MgO*100 << std::endl;
-        results_file << "Calculated/Measured SiO2: " << final_calculated_slag.SiO2*100 << " / " << test_heat.laddle.final_slag.SiO2*100 << std::endl;
-        results_file << "Calculated/Measured Al2O3: " << final_calculated_slag.Al2O3*100 << " / " << test_heat.laddle.final_slag.Al2O3*100 << std::endl;
-        results_file << "Calculated/Measured FeO: " << final_calculated_slag.FeO*100 << " / " << test_heat.laddle.final_slag.FeO*100 << std::endl;
-        results_file << "Calculated/Measured MnO: " << final_calculated_slag.MnO*100 << " / " << test_heat.laddle.final_slag.MnO*100 << std::endl;
-        results_file << "Calculated/Measured CaF2: " << final_calculated_slag.CaF2*100 << " / " << test_heat.laddle.final_slag.CaF2*100 << std::endl << std::endl;
-
-        results_file << "Final MSE: " << get_slag_MSE(test_heat, compositions, results)*100 << std::endl;
-        results_file << "Final Absolute Error: " << get_slag_absolute_error(test_heat, compositions, results)*100 << std::endl;
-        results_file << "Final Relative Error: " << get_slag_relative_error(test_heat, compositions, results)*100 << std::endl;
-        results_file << "Final Standard Deviation: " << find_std_dev_slag_error(get_calculated_slag(test_heat, compositions, results), test_heat.laddle.final_slag)*100 << std::endl << std::endl;
-        results_file << "---------------------------------------------------------------------------------" << std::endl << std::endl;
-        }
-    std::cout << "Done" << std::endl;
-    results_file.close();
-}
-*/
